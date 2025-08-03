@@ -12,7 +12,7 @@ cd Cyborg-Threat-Hunting-Lab
 ```
 ## deploy elastic
 ```
-.\elastic-docker\setup.sh
+bash elastic-docker/setup.sh
 ```
 ## Set python virtual enviroment
 ```
