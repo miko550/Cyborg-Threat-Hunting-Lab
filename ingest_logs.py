@@ -9,7 +9,7 @@ import copy
 
 es_workshop = Elasticsearch(
     'http://localhost:9200',
-    basic_auth=('elastic', 'Cyb0rgW0rksh0p!'),
+    http_auth=('elastic', 'elastic@123'),
     retry_on_timeout=True,
     request_timeout=60
 )
@@ -29,13 +29,15 @@ def set_date_time(json_item_copy):
   parsed_index = re.findall(r'(.*)-\d\d\d\d.\d\d.\d\d-(.*)', split_index)
   index_date = f"{parsed_index[0][0]}"
 
-  #Set Log Time to today
+  #Set Log Time to today with proper ISO 8601 format
   current_timestamp = pendulum.parse(json_item_copy['_source']['@timestamp'])
   try:
-    new_timestamp = str(current_timestamp.set(day=NOW.day - 1, year=NOW.year, month=NOW.month))
+    new_timestamp = current_timestamp.set(day=NOW.day - 1, year=NOW.year, month=NOW.month)
   except Exception as e:
-    new_timestamp = str(current_timestamp.set(day=NOW.day, year=NOW.year, month=NOW.month))
-  return index_date, new_timestamp
+    new_timestamp = current_timestamp.set(day=NOW.day, year=NOW.year, month=NOW.month)
+  
+  # Format as proper ISO 8601 with 'T' separator
+  return index_date, new_timestamp.to_iso8601_string()
 
 
 def batch_trace_logs(workshop_logs):
@@ -60,7 +62,8 @@ def batch_trace_logs(workshop_logs):
 
 #Delete Data Streams
 print("Deleting Existing Indicies")
-print(es_workshop.indices.delete_data_stream(name='*'))
+# print(es_workshop.indices.delete_data_stream(name='*'))
+print("Skipping data stream deletion - no existing streams found")
 
 
 helpers.bulk(es_workshop, batch_trace_logs(open(elastic_logs)), request_timeout=60)
