@@ -25,26 +25,71 @@ echo "✅ Elasticsearch is ready!"
 
 # Create Kibana service account token
 echo "🔑 Creating Kibana service account token..."
-TOKEN=$(docker exec elastic-docker-elasticsearch-1 /usr/share/elasticsearch/bin/elasticsearch-service-tokens create elastic/kibana kibana-token | grep "SERVICE_TOKEN" | awk '{print $3}')
+TOKEN_OUTPUT=$(docker exec elastic-docker-elasticsearch-1 /usr/share/elasticsearch/bin/elasticsearch-service-tokens create elastic/kibana kibana-token-setup 2>/dev/null)
 
-if [ -z "$TOKEN" ]; then
-    echo "❌ Failed to create service token. Using basic authentication instead."
-    # Update kibana.yml to use basic auth
-    sed -i 's/elasticsearch.serviceAccountToken:.*/elasticsearch.username: elastic\nelasticsearch.password: elastic@123/' docker/kibana.yml
-else
+if echo "$TOKEN_OUTPUT" | grep -q "SERVICE_TOKEN"; then
+    # Extract the token value (everything after the = sign)
+    TOKEN=$(echo "$TOKEN_OUTPUT" | grep "SERVICE_TOKEN" | sed 's/.*= //')
     echo "✅ Service token created successfully!"
+    echo "🔑 Token: ${TOKEN:0:20}..."
+    
+    # Backup original kibana.yml
+    cp docker/kibana.yml docker/kibana.yml.backup
+    
     # Update kibana.yml to use service token
-    sed -i "s/elasticsearch.username: elastic/elasticsearch.serviceAccountToken: $TOKEN/" docker/kibana.yml
-    sed -i '/elasticsearch.password: elastic@123/d' docker/kibana.yml
+    cat > docker/kibana.yml << EOF
+---
+## Default Kibana configuration from Kibana base image.
+## https://github.com/elastic/kibana/blob/master/src/dev/build/tasks/os_packages/docker_generator/templates/kibana_yml.template.js
+#
+server.name: kibana
+server.host: "0.0.0.0"
+elasticsearch.hosts: [ "http://elasticsearch:9200" ]
+xpack.monitoring.ui.container.elasticsearch.enabled: true
+elasticsearch.requestTimeout: 600000
+## X-Pack security credentials
+#
+xpack.encryptedSavedObjects.encryptionKey: elasticelasticelasticelasticelasticelasticelasticelastic
+elasticsearch.serviceAccountToken: $TOKEN
+EOF
+    
+    echo "✅ Kibana configuration updated with service token"
+else
+    echo "❌ Failed to create service token. Please check Elasticsearch logs."
+    echo "📋 Troubleshooting:"
+    echo "   - Ensure Elasticsearch is running: docker compose ps"
+    echo "   - Check Elasticsearch logs: docker compose logs elasticsearch"
+    echo "   - Try restarting: docker compose restart elasticsearch"
+    exit 1
 fi
 
 # Start Kibana
 echo "📊 Starting Kibana..."
 docker compose up kibana -d
 
-# Wait for Kibana to be ready
+# Wait for Kibana to be ready and check its status
 echo "⏳ Waiting for Kibana to be ready..."
 sleep 30
+
+# Check if Kibana is responding
+echo "🔍 Checking Kibana status..."
+MAX_ATTEMPTS=12
+ATTEMPT=0
+
+while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+    if curl -s -u elastic:elastic@123 http://localhost:5601/api/status > /dev/null 2>&1; then
+        echo "✅ Kibana is ready!"
+        break
+    else
+        ATTEMPT=$((ATTEMPT + 1))
+        echo "⏳ Waiting for Kibana to respond... (attempt $ATTEMPT/$MAX_ATTEMPTS)"
+        sleep 10
+    fi
+done
+
+if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+    echo "⚠️  Kibana is taking longer than expected to start. Check logs with: docker compose logs kibana"
+fi
 
 echo "🎉 Setup complete!"
 echo ""
