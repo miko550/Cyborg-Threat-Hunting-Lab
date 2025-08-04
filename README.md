@@ -28,6 +28,7 @@ python create_simple_templates.py
 ```
 ## Ingest data dateset
 ```
-unzip dataset/workshop.zip
+sudo apt install unzip
+unzip dataset/workshop.zip -d dataset/
 python ingest_logs.py dataset/workshop.ndjson
 ```
